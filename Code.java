@@ -5,20 +5,6 @@ import CPP.Absyn.Type;
 import CPP.Absyn.Type_bool;
 import CPP.Absyn.Type_int;
 
-class Fun {
-    public String id;
-    public FunType funType;
-    public Fun (String id, FunType funType) {
-        this.id = id;
-        this.funType = funType;
-    }
-    public String toJVM() {
-      return id + funType.toJVM();
-    }
-}
-
-
-
 
 abstract class Code {
     public abstract <R> R accept (CodeVisitor<R> v);

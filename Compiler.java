@@ -225,15 +225,16 @@ public class Compiler
         { /* Code For SReturn Goes Here */
             // because int and boolean both use ireturn
             // while void doesn't have return statement
-            /*Type t = new Type_int();
+            Type t = new Type_int();
             if(branchingUtils.isConditionalExp(p.exp_)) {
                 branchingUtils.genReturnBranch(p);
             } else {
-                p.exp_.accept(new ExpVisitor(), STM_RETURN);
+                String var = p.exp_.accept(new ExpVisitor(), STM_RETURN);
+                loadVariable(t, var);
                 emit (new Return(t));
-            }*/
-            p.exp_.accept(new ExpVisitor(), STM_RETURN);
-            emit (new Return(new Type_int()));
+            }
+            /*p.exp_.accept(new ExpVisitor(), STM_RETURN);
+            emit (new Return(new Type_int()));*/
             return null;
         }
 
@@ -241,14 +242,12 @@ public class Compiler
          * and also label when the condition is false*/
         public Void visit(CPP.Absyn.SWhile p, String arg)
         { /* Code For SWhile Goes Here */
-            // TODO
             branchingUtils.genWhileBranch(p);
             return null;
         }
 
         public Void visit(CPP.Absyn.SIfElse p, String arg)
         { /* Code For SIfElse Goes Here */
-            // TODO
             branchingUtils.genIfElseBranch(p);
             return null;
         }
@@ -277,11 +276,11 @@ public class Compiler
         }
 
         // exclude double for now
-        /*public Void visit(CPP.Absyn.EDouble p, Void arg)
-        { *//* Code For EDouble Goes Here *//*
-          //p.double_;
-          return null;
-        }*/
+        public String visit(CPP.Absyn.EDouble p, String arg)
+        { /* Code For EDouble Goes Here */
+            //p.double_;
+            return null;
+        }
 
         public String visit(CPP.Absyn.EId p, String arg)
         { /* Code For EId Goes Here */
@@ -291,8 +290,8 @@ public class Compiler
         { /* Code For EApp Goes Here */
             boolean conditionalExp = false;
             for (Exp x: p.listexp_) {
-                //conditionalExp = branchingUtils.isConditionalExp(x);
-                String id = x.accept(new ExpVisitor(), arg);
+                conditionalExp = branchingUtils.isConditionalExp(x);
+                String id = x.accept(new ExpVisitor(), "EApp");
                 Type t = new Type_int();
                 loadVariable(t, id);
             }
@@ -306,12 +305,12 @@ public class Compiler
                 Fun fun = sig.get(p.id_);
                 FunType funType = fun.funType;
                 if(conditionalExp) {
-                    //branchingUtils.genMthBranch(fun);
+                    branchingUtils.genMthBranch(fun);
                 } else {
                     emit(new Call(className, fun));
                 }
                 if(funType.returnType instanceof Type_bool) {
-                    //branchingUtils.handleMthBoolReturn();
+                    branchingUtils.handleMthBoolReturn();
                 }
             }
             return null;
@@ -719,9 +718,9 @@ public class Compiler
         }
 
         // exclude double for now
-        /*public Integer visit (Type_double t, Void arg) {
+        public Integer visit (Type_double t, Void arg) {
           return 2;
-        }*/
+        }
     }
 
     private void addBlockLevel() {
@@ -804,6 +803,23 @@ public class Compiler
             } else { return false; }
         }
 
+        public boolean isConditionalExp(Exp exp) {
+            if(exp instanceof CPP.Absyn.ELt || exp instanceof CPP.Absyn.EGt ||
+                    exp instanceof CPP.Absyn.ELtEq || exp instanceof CPP.Absyn.EGtEq ||
+                    exp instanceof CPP.Absyn.EEq || exp instanceof CPP.Absyn.ENEq ||
+                    exp instanceof CPP.Absyn.EAnd || exp instanceof CPP.Absyn.EOr) {
+                return true;
+            }
+            return false;
+        }
+
+        public void handleMthBoolReturn() {
+            Label lTrue = new Label(currentLabel);
+            Label lFalse = new Label(currentLabel + 1);
+            emit(new IfEq(new Type_bool(), lTrue));
+            emit(new Goto(lFalse));
+        }
+
         public void genWhileBranch(SWhile sWhile) {
             Exp condition = sWhile.exp_;
             Stm loopStm = sWhile.stm_;
@@ -853,6 +869,44 @@ public class Compiler
             popUnusedLoad();
             emit(new Goto(lOut));
 
+            emit(lOut);
+        }
+
+        public void genReturnBranch(SReturn sReturn) {
+            Exp condition = sReturn.exp_;
+            String arg = condition.accept(new ExpVisitor(), STM_RETURN);
+            evalBool(arg);
+
+            Label lTrue = makeNewLabel();
+            addLabelAddress();
+            Label lFalse = makeNewLabel();
+            addLabelAddress();
+            Label lOut = makeNewLabel();
+            addLabelAddress();
+            emit(lTrue);
+            emit(new IConst(1));
+            emit(new Return(new Type_bool()));
+            emit(lFalse);
+            emit(new IConst(0));
+            emit(new Return(new Type_bool()));
+            emit(lOut);
+        }
+
+        public void genMthBranch(Fun fun) {
+            Label lTrue = makeNewLabel();
+            addLabelAddress();
+            Label lFalse = makeNewLabel();
+            addLabelAddress();
+            Label lOut = makeNewLabel();
+            addLabelAddress();
+            emit(lTrue);
+            emit(new IConst(1));
+            emit(new Call(className, fun));
+            emit(new Goto(lOut));
+            emit(lFalse);
+            emit(new IConst(0));
+            emit(new Call(className, fun));
+            emit(new Goto(lOut));
             emit(lOut);
         }
 
@@ -958,100 +1012,5 @@ public class Compiler
             }
             emit(new Goto(lFalse));
         }
-
-
-
-        /*
-
-        public boolean isConditionalExp(Exp exp) {
-            if(exp instanceof CPP.Absyn.ELt || exp instanceof CPP.Absyn.EGt ||
-                    exp instanceof CPP.Absyn.ELtEq || exp instanceof CPP.Absyn.EGtEq ||
-                    exp instanceof CPP.Absyn.EEq || exp instanceof CPP.Absyn.ENEq ||
-                    exp instanceof CPP.Absyn.EAnd || exp instanceof CPP.Absyn.EOr) {
-                return true;
-            }
-            return false;
-        }
-
-        public void handleMthBoolReturn() {
-            Label label = new Label(currentLabel);
-            emit(new IfEq(new Type_bool(), label));
-            emitGotoLabel(1);
-        }
-
-        public void genMthBranch(Fun fun) {
-            Label lTrue = new Label(currentLabel);
-            addLabelAddress();
-            Label lFalse = new Label(currentLabel);
-            addLabelAddress();
-            Label lOut = new Label(currentLabel);
-            addLabelAddress();
-            emit(lTrue);
-            emit(new IConst(1));
-            emit(new Call(className, fun));
-            emit(new Goto(lOut));
-            emit(lFalse);
-            emit(new IConst(0));
-            emit(new Call(className, fun));
-            emit(new Goto(lOut));
-            emit(lOut);
-        }
-
-        public void genReturnBranch(SReturn sReturn) {
-            Exp condition = sReturn.exp_;
-            condition.accept(new ExpVisitor(), STM_RETURN);
-
-            Label lTrue = new Label(currentLabel - 2);
-            Label lFalse = new Label(currentLabel - 1);
-            Label lOut = new Label(currentLabel);
-            emit(lTrue);
-            emit(new IConst(1));
-            emit(new Return(new Type_bool()));
-            emit(lFalse);
-            emit(new IConst(0));
-            emit(new Return(new Type_bool()));
-            emit(lOut);
-            addLabelAddress();
-        }
-
-        public void genExpConditionBranch(Exp exp) {
-            if(exp instanceof EAnd) {
-                genEAndBranch(exp);
-            } else if(exp instanceof EOr) {
-                genEOrBranch(exp);
-            } else {
-                genConditionBranch(exp);
-            }
-        }
-
-        private void genEAndBranch(Exp exp) {
-            EAnd eAnd = (EAnd) exp;
-
-            emitNewLabel(0);
-            String id1 = eAnd.exp_1.accept(new ExpVisitor(), null);
-            if(!evalBoolVar(id1,"EAnd")) {
-                // this is a true or false literal
-                evalBoolLiteral(id1,"EAnd");
-            }
-
-            output.removeLast();
-            LinkedList<String> save = output;
-            output = new LinkedList<>();
-
-            // emitNewLabel(0);
-            Label rhs = new Label(currentLabel);
-            emit(rhs);
-            String id2 = eAnd.exp_2.accept(new ExpVisitor(), null);
-            if(!evalBoolVar(id2,"EAnd")) {
-                evalBoolLiteral(id2,"EAnd");
-            }
-
-            String last = output.getLast();
-            save.add(last);
-            save.addAll(output);
-            output = save;
-        }
-
-        */
     }
 }
