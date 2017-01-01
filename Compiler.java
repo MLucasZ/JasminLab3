@@ -1,7 +1,9 @@
 import CPP.Absyn.*;
 
 import java.io.FileNotFoundException;
+import java.io.IOException;
 import java.io.PrintWriter;
+import java.lang.*;
 import java.util.*;
 
 public class Compiler
@@ -74,7 +76,11 @@ public class Compiler
                 out.print(s);
             }
             out.close();
+
+            java.lang.Runtime.getRuntime().exec("java -jar jasmin.jar "+className+".j");
         } catch (FileNotFoundException e) {
+            e.printStackTrace();
+        } catch (IOException e) {
             e.printStackTrace();
         }
     }
