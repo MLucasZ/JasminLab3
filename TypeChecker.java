@@ -19,9 +19,8 @@ public class TypeChecker {
     // Share type constants
     public final Type BOOL   = new Type_bool();
     public final Type INT    = new Type_int();
+    public final Type DOUBLE = new Type_double();
     public final Type VOID   = new Type_void();
-    // exclude double for now
-    // public final Type DOUBLE = new Type_double();
 
     // Entry point
 
@@ -31,18 +30,17 @@ public class TypeChecker {
 
     ////////////////////////////// Program //////////////////////////////
 
-    public class ProgramVisitor implements Program.Visitor<Void,Void> {
-
-        public Void visit(CPP.Absyn.PDefs p, Void arg) {
-
+    public class ProgramVisitor implements Program.Visitor<Void,Void>
+    {
+        public Void visit(CPP.Absyn.PDefs p, Void arg)
+        {
             // Put primitive functions into signature
             sig = new TreeMap<String,FunType>();
             sig.put("printInt"   , new FunType(VOID, singleArg(INT)));
             sig.put("readInt"    , new FunType(INT, new ListArg()));
 
-            // exclude double for now
-            /*sig.put("printDouble"   , new FunType(VOID, singleArg(DOUBLE)));
-            sig.put("readDouble"    , new FunType(DOUBLE, new ListArg()));*/
+            sig.put("printDouble"   , new FunType(VOID, singleArg(DOUBLE)));
+            sig.put("readDouble"    , new FunType(DOUBLE, new ListArg()));
 
 
             // Extend signature by all the definitions
@@ -81,9 +79,10 @@ public class TypeChecker {
 
     ////////////////////////////// Function //////////////////////////////
 
-    public class DefVisitor implements Def.Visitor<Void,Void> {
-
-        public Void visit(CPP.Absyn.DFun p, Void arg) {
+    public class DefVisitor implements Def.Visitor<Void,Void>
+    {
+        public Void visit(CPP.Absyn.DFun p, Void arg)
+        {
             // set return type and initial context
             returnType = p.type_;
             cxt = new LinkedList();
@@ -106,9 +105,10 @@ public class TypeChecker {
     ///////////////////////// Function argument /////////////////////////
 
     // Add a type declaration to the context
-    public class ArgVisitor implements Arg.Visitor<Void,Void> {
-
-        public Void visit(CPP.Absyn.ADecl p, Void arg) {
+    public class ArgVisitor implements Arg.Visitor<Void,Void>
+    {
+        public Void visit(CPP.Absyn.ADecl p, Void arg)
+        {
             newVar(p.id_, p.type_);
             return null;
         }
@@ -116,14 +116,16 @@ public class TypeChecker {
 
     ////////////////////////////// Statement //////////////////////////////
 
-    public class StmVisitor implements Stm.Visitor<Void,Void> {
-
-        public Void visit(CPP.Absyn.SExp p, Void arg) {
+    public class StmVisitor implements Stm.Visitor<Void,Void>
+    {
+        public Void visit(CPP.Absyn.SExp p, Void arg)
+        {
             Type t = p.exp_.accept(new ExpVisitor(), arg);
             return null;
         }
 
-        public Void visit(CPP.Absyn.SDecls p, Void arg) {
+        public Void visit(CPP.Absyn.SDecls p, Void arg)
+        {
             for(String id: p.listid_ ) {
                 newVar(id, p.type_);
             }
@@ -131,13 +133,15 @@ public class TypeChecker {
         }
 
         // E.g. "int x = 1";
-        public Void visit(CPP.Absyn.SInit p, Void arg) {
+        public Void visit(CPP.Absyn.SInit p, Void arg)
+        {
             check(p.type_, p.exp_.accept(new ExpVisitor(), arg));
             newVar(p.id_, p.type_);
             return null;
         }
 
-        public Void visit(CPP.Absyn.SReturn p, Void arg) {
+        public Void visit(CPP.Absyn.SReturn p, Void arg)
+        {
             Type t1 = p.exp_.accept(new ExpVisitor(),arg);
             if(!t1.equals(returnType))
                 throw new TypeException("Function must have return value with the same type");
@@ -145,23 +149,26 @@ public class TypeChecker {
             return null;
         }
 
-        public Void visit(CPP.Absyn.SWhile p, Void arg) {
-           Type t1= p.exp_.accept(new ExpVisitor(),arg);
-              if(!t1.equals(BOOL))
+        public Void visit(CPP.Absyn.SWhile p, Void arg)
+        {
+            Type t1= p.exp_.accept(new ExpVisitor(),arg);
+            if(!t1.equals(BOOL))
                 throw new TypeException("While state must have Boolean expression");
             return null;
 
         }
 
         // E.g. int x; { int x = 1; x++; }
-        public Void visit(CPP.Absyn.SBlock p, Void arg) {
+        public Void visit(CPP.Absyn.SBlock p, Void arg)
+        {
             newBlock();
             for (Stm s: p.liststm_) s.accept(new StmVisitor(), arg);
             popBlock();
             return null;
         }
 
-        public Void visit(CPP.Absyn.SIfElse p, Void arg) {
+        public Void visit(CPP.Absyn.SIfElse p, Void arg)
+        {
             Type t1= p.exp_.accept(new ExpVisitor(),arg);
             if(!t1.equals(BOOL)) {
                 throw new TypeException("If Condition must have Boolean expression");
@@ -182,7 +189,8 @@ public class TypeChecker {
 
     ////////////////////////////// Expression //////////////////////////////
 
-    public class ExpVisitor implements Exp.Visitor<Type,Void> {
+    public class ExpVisitor implements Exp.Visitor<Type,Void>
+    {
 
         // Literals
         public Type visit(CPP.Absyn.ETrue p, Void arg)
@@ -197,20 +205,20 @@ public class TypeChecker {
         {
             return INT;
         }
-
-        // exclude double for now
         public Type visit(CPP.Absyn.EDouble p, Void arg)
         {
-            return null;
+            return DOUBLE;
         }
 
         // Variable
-        public Type visit(CPP.Absyn.EId p, Void arg) {
+        public Type visit(CPP.Absyn.EId p, Void arg)
+        {
             return lookupVar (p.id_);
         }
 
         // Function call  plus(4,3)  where  int plus(int x, int y);
-        public Type visit(CPP.Absyn.EApp p, Void arg) {
+        public Type visit(CPP.Absyn.EApp p, Void arg)
+        {
             FunType ft = sig.get(p.id_);
             if (ft == null)
                 throw new TypeException("Undefined function " + p.id_);
@@ -231,19 +239,23 @@ public class TypeChecker {
         // x++
         public Type visit(CPP.Absyn.EPostIncr p, Void arg)
         {
-            return numericType(p.exp_.accept(new ExpVisitor(), arg));
+            if(p.exp_ instanceof EId) return numericType(p.exp_.accept(new ExpVisitor(), arg));
+            throw new TypeException("Decrement operation needs variable");
         }
         public Type visit(CPP.Absyn.EPostDecr p, Void arg)
         {
-            return numericType(p.exp_.accept(new ExpVisitor(), arg));
+            if(p.exp_ instanceof EId) return numericType(p.exp_.accept(new ExpVisitor(), arg));
+            throw new TypeException("Decrement operation needs variable");
         }
         public Type visit(CPP.Absyn.EPreIncr p, Void arg)
         {
-            return numericType(p.exp_.accept(new ExpVisitor(), arg));
+            if(p.exp_ instanceof EId) return numericType(p.exp_.accept(new ExpVisitor(), arg));
+            throw new TypeException("Decrement operation needs variable");
         }
         public Type visit(CPP.Absyn.EPreDecr p, Void arg)
         {
-            return numericType(p.exp_.accept(new ExpVisitor(), arg));
+            if(p.exp_ instanceof EId) return numericType(p.exp_.accept(new ExpVisitor(), arg));
+            throw new TypeException("Decrement operation needs variable");
         }
 
         // Arithmetical operators
@@ -255,14 +267,17 @@ public class TypeChecker {
 
             if(!t1.equals(t2)) {
                 throw new TypeException("Multiplication requires operands with the same type");
-            } else if(t1.equals(INT)) {
-                return INT;
+            } else if(t1.equals(INT) || t1.equals(DOUBLE)) {
+                if(t1.equals(INT)) {
+                    return INT;
+                } else {
+                    return DOUBLE;
+                }
             }else{
                 throw new TypeException("* requires both operands to be int or double");
             }
 
         }
-
         public Type visit(CPP.Absyn.EDiv p, Void arg)
         {
             Type t1=p.exp_1.accept(new ExpVisitor(), arg);
@@ -270,24 +285,32 @@ public class TypeChecker {
 
             if(!t1.equals(t2)) {
                 throw new TypeException("Division requires operands with the same type");
-            } else if(t1.equals(INT)) {
-                return INT;
+            } else if(t1.equals(INT) || t1.equals(DOUBLE)) {
+                if(t1.equals(INT)) {
+                    return INT;
+                } else {
+                    return DOUBLE;
+                }
             }else{
                 throw new TypeException("/ requires both operands to be int or double");
             }
         }
-
         public Type visit(CPP.Absyn.EPlus p, Void arg)
         {
             Type t1=p.exp_1.accept(new ExpVisitor(), arg);
             Type t2=p.exp_2.accept(new ExpVisitor(), arg);
             if(!t1.equals(t2)) {
                 throw new TypeException("Addition requires operands with the same type");
-            } else if(t1.equals(INT)) {
-                return INT;
+            } else if(t1.equals(INT) || t1.equals(DOUBLE)) {
+                if(t1.equals(INT)) {
+                    return INT;
+                } else {
+                    return DOUBLE;
+                }
             }else{
                 throw new TypeException("+ requires both operands to be int or double");
             }
+
         }
 
         public Type visit(CPP.Absyn.EMinus p, Void arg)
@@ -297,8 +320,12 @@ public class TypeChecker {
 
             if(!t1.equals(t2)) {
                 throw new TypeException("Subtraction requires operands with the same type");
-            } else if(t1.equals(INT)) {
-                return INT;
+            } else if(t1.equals(INT) || t1.equals(DOUBLE)) {
+                if(t1.equals(INT)) {
+                    return INT;
+                } else {
+                    return DOUBLE;
+                }
             }else{
                 throw new TypeException("- requires both operands to be int or double");
             }
@@ -312,7 +339,7 @@ public class TypeChecker {
 
             if (!t1.equals(t2)) {
                 throw new TypeException("Both of the operands have to be the same type!");
-            } else if (t1.equals(INT)) {
+            } else if (t1.equals(INT) || t1.equals(DOUBLE)) {
                 return BOOL;
             } else {
                 throw new TypeException("< requires both operands to be int or double");
@@ -325,7 +352,7 @@ public class TypeChecker {
 
             if (!t1.equals(t2)) {
                 throw new TypeException("Both of the operands have to be the same type!");
-            } else if (t1.equals(INT)) {
+            } else if (t1.equals(INT) || t1.equals(DOUBLE)) {
                 return BOOL;
             } else {
                 throw new TypeException("> requires both operands to be int or double");
@@ -339,7 +366,7 @@ public class TypeChecker {
 
             if (!t1.equals(t2)) {
                 throw new TypeException("Both of the operands have to be the same type!");
-            } else if (t1.equals(INT)) {
+            } else if (t1.equals(INT) || t1.equals(DOUBLE)) {
                 return BOOL;
             } else {
                 throw new TypeException("<= requires both operands to be int or double");
@@ -353,14 +380,14 @@ public class TypeChecker {
 
             if (!t1.equals(t2)) {
                 throw new TypeException("Both of the operands have to be the same type!");
-            } else if (t1.equals(INT)) {
+            } else if (t1.equals(INT) || t1.equals(DOUBLE)) {
                 return BOOL;
             } else {
                 throw new TypeException(">= requires both operands to be int or double");
             }
         }
 
-            // Equality operators
+        // Equality operators
 
         public Type visit(CPP.Absyn.EEq p, Void arg)
         {
@@ -369,7 +396,7 @@ public class TypeChecker {
 
             if(!t1.equals(t2))
                 throw new TypeException("Both of the operands have to be the same type!");
-            else if(t1.equals(INT) || t1.equals(BOOL))
+            else if(t1.equals(INT)|| t1.equals(DOUBLE) || t1.equals(BOOL))
                 return BOOL;
             else
                 throw new TypeException("== requires both operands to be int, double or boolean");
@@ -381,14 +408,14 @@ public class TypeChecker {
 
             if(!t1.equals(t2))
                 throw new TypeException("Both of the operands have to be the same type!");
-            else if(t1.equals(INT) || t1.equals(BOOL))
+            else if(t1.equals(INT)|| t1.equals(DOUBLE) || t1.equals(BOOL))
                 return BOOL;
             else
                 throw new TypeException("!= requires both operands to be int, double or boolean");
         }
 
 
-            // Logic operators
+        // Logic operators
 
         public Type visit(CPP.Absyn.EAnd p, Void arg) {
             Type t1 = p.exp_1.accept(new ExpVisitor(), arg);
@@ -458,7 +485,7 @@ public class TypeChecker {
         }
 
         if(t == null) {
-           throw new TypeException("unbound variable " + x);
+            throw new TypeException("unbound variable " + x);
         }
         return t;
     }
@@ -473,7 +500,7 @@ public class TypeChecker {
     }
 
     public Type numericType (Type t) {
-        if (!t.equals(INT))
+        if (!t.equals(INT) && !t.equals(DOUBLE))
             throw new TypeException("expected expression of numeric type");
         return t;
     }

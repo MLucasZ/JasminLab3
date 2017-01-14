@@ -77,10 +77,13 @@ public class Compiler
             }
             out.close();
 
-            java.lang.Runtime.getRuntime().exec("java -jar jasmin.jar "+className+".j");
+            Process process = java.lang.Runtime.getRuntime().exec("java -jar jasmin.jar "+className+".j");
+            process.waitFor();
         } catch (FileNotFoundException e) {
             e.printStackTrace();
         } catch (IOException e) {
+            e.printStackTrace();
+        } catch (InterruptedException e) {
             e.printStackTrace();
         }
     }
