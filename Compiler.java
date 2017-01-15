@@ -31,14 +31,18 @@ public class Compiler
 
     // Current stack size
     private int currentStack;
-    private BranchingUtils branchingUtils;
+
+    // Global counter to get next label;
+    int currentLabel = 0;
+
+    //private BranchingUtils branchingUtils;
     private String className;
 
     private final String STM_EXP = "SExp";
     private final String STM_INIT = "SInit";
     private final String STM_BLOCK = "SBlock";
     private final String STM_WHILE = "SWhile";
-    private final String STM_IFLESE = "SIfElse";
+    private final String STM_IFELSE = "SIfElse";
     private final String STM_RETURN = "SReturn";
 
     private final String PRINT_INT = "printInt";
@@ -50,7 +54,7 @@ public class Compiler
 
 
     public void compile(String name, CPP.Absyn.Program p) {
-        branchingUtils = new BranchingUtils();
+        //branchingUtils = new BranchingUtils();
         // Initialize output
         output = new LinkedList();
 
@@ -234,16 +238,9 @@ public class Compiler
         { /* Code For SReturn Goes Here */
             // because int and boolean both use ireturn
             // while void doesn't have return statement
-            Type t = new Type_int();
-            if(branchingUtils.isConditionalExp(p.exp_)) {
-                branchingUtils.genReturnBranch(p);
-            } else {
-                String var = p.exp_.accept(new ExpVisitor(), STM_RETURN);
-                loadVariable(t, var);
-                emit (new Return(t));
-            }
-            /*p.exp_.accept(new ExpVisitor(), STM_RETURN);
-            emit (new Return(new Type_int()));*/
+            String id = p.exp_.accept(new ExpVisitor(), STM_RETURN);
+            loadVariable(new Type_int(), id);
+            emit (new Return(new Type_int()));
             return null;
         }
 
@@ -251,13 +248,55 @@ public class Compiler
          * and also label when the condition is false*/
         public Void visit(CPP.Absyn.SWhile p, String arg)
         { /* Code For SWhile Goes Here */
-            branchingUtils.genWhileBranch(p);
+            Exp condition = p.exp_;
+            Stm loopStm = p.stm_;
+
+            Label lCondition = makeNewLabel();
+            addLabelAddress();
+
+            emit(lCondition);
+            String id = condition.accept(new ExpVisitor(), STM_WHILE);
+            loadVariable(new Type_int(), id);
+
+            Label lOut = makeNewLabel();
+            addLabelAddress();
+            emit(new IfNe(new Type_bool(), lOut));// ifeq
+
+            loopStm.accept(new StmVisitor(), STM_WHILE);
+            popUnusedLoad();
+            emit(new Goto(lCondition));
+
+            emit(lOut);
+
             return null;
         }
 
         public Void visit(CPP.Absyn.SIfElse p, String arg)
         { /* Code For SIfElse Goes Here */
-            branchingUtils.genIfElseBranch(p);
+            Exp condition = p.exp_;
+            Stm stmTrue = p.stm_1;
+            Stm stmFalse = p.stm_2;
+
+            String id = condition.accept(new ExpVisitor(), STM_IFELSE);
+            loadVariable(new Type_int(), id);
+
+            Label lFalse = makeNewLabel();
+            addLabelAddress();
+            Label lOut = makeNewLabel();
+            addLabelAddress();
+            emit(new IfNe(new Type_bool(), lFalse));// ifeq
+
+            stmTrue.accept(new StmVisitor(), STM_IFELSE);
+            popUnusedLoad();
+            emit(new Goto(lOut));
+
+            emit(lFalse);
+            stmFalse.accept(new StmVisitor(), STM_IFELSE);
+            popUnusedLoad();
+            emit(new Goto(lOut));
+
+            emit(lOut);
+
             return null;
         }
     }
@@ -280,7 +319,7 @@ public class Compiler
         }
         public String visit(CPP.Absyn.EInt p, String arg)
         {
-            emit(new IConst (p.integer_));
+            emit(new IConst(p.integer_));
             return null;
         }
 
@@ -297,10 +336,8 @@ public class Compiler
         }
         public String visit(CPP.Absyn.EApp p, String arg)
         { /* Code For EApp Goes Here */
-            boolean conditionalExp = false;
             for (Exp x: p.listexp_) {
-                conditionalExp = branchingUtils.isConditionalExp(x);
-                String id = x.accept(new ExpVisitor(), "EApp");
+                String id = x.accept(new ExpVisitor(), arg);
                 Type t = new Type_int();
                 loadVariable(t, id);
             }
@@ -312,15 +349,7 @@ public class Compiler
                 emit(new Call(READ_INT, FunType.ASM_INT, ""));
             } else {
                 Fun fun = sig.get(p.id_);
-                FunType funType = fun.funType;
-                if(conditionalExp) {
-                    branchingUtils.genMthBranch(fun);
-                } else {
-                    emit(new Call(className, fun));
-                }
-                if(funType.returnType instanceof Type_bool) {
-                    branchingUtils.handleMthBoolReturn();
-                }
+                emit(new Call(className, fun));
             }
             return null;
         }
@@ -420,7 +449,8 @@ public class Compiler
             String exp2 = p.exp_2.accept(new ExpVisitor(), arg);
             loadVariable(t, exp2);
 
-            branchingUtils.genBooleanBranch(p);
+            // TODO
+            genBooleanBranch(p);
             return null;
         }
         public String visit(CPP.Absyn.EGt p, String arg)
@@ -433,7 +463,7 @@ public class Compiler
             String exp2 = p.exp_2.accept(new ExpVisitor(), arg);
             loadVariable(t, exp2);
 
-            branchingUtils.genBooleanBranch(p);
+            genBooleanBranch(p);
             return null;
         }
         public String visit(CPP.Absyn.ELtEq p, String arg)
@@ -446,7 +476,7 @@ public class Compiler
             String exp2 = p.exp_2.accept(new ExpVisitor(), arg);
             loadVariable(t, exp2);
 
-            branchingUtils.genBooleanBranch(p);
+            genBooleanBranch(p);
             return null;
         }
         public String visit(CPP.Absyn.EGtEq p, String arg)
@@ -459,7 +489,7 @@ public class Compiler
             String exp2 = p.exp_2.accept(new ExpVisitor(), arg);
             loadVariable(t, exp2);
 
-            branchingUtils.genBooleanBranch(p);
+            genBooleanBranch(p);
             return null;
         }
         public String visit(CPP.Absyn.EEq p, String arg)
@@ -472,7 +502,7 @@ public class Compiler
             String exp2 = p.exp_2.accept(new ExpVisitor(), arg);
             loadVariable(t, exp2);
 
-            branchingUtils.genBooleanBranch(p);
+            genBooleanBranch(p);
             return null;
         }
         public String visit(CPP.Absyn.ENEq p, String arg)
@@ -485,7 +515,7 @@ public class Compiler
             String exp2 = p.exp_2.accept(new ExpVisitor(), arg);
             loadVariable(t, exp2);
 
-            branchingUtils.genBooleanBranch(p);
+            genBooleanBranch(p);
             return null;
         }
         public String visit(CPP.Absyn.EAnd p, String arg)
@@ -493,14 +523,14 @@ public class Compiler
             // for && if exp1 is true then needs to evaluate exp2
             // but if exp1 is false, whatever value of exp2 will make entire statement false
             // thus, no need to evaluate exp2
-            branchingUtils.lazyEvaluation(p, arg);
+            lazyEvaluation(p, arg);
             return null;
         }
         public String visit(CPP.Absyn.EOr p, String arg)
         { /* Code For EOr Goes Here */
             // OR just need exp1 to be true and the rest won't be evaluated
             // since every value from exp2 will result the statement to be true
-            branchingUtils.lazyEvaluation(p, arg);
+            lazyEvaluation(p, arg);
             return null;
         }
         public String visit(CPP.Absyn.EAss p, String arg)
@@ -516,8 +546,8 @@ public class Compiler
             emit(new Store(t, lookupVar(exp1)));
             emit(new Load(t, lookupVar(exp1)));
 
-            // shouldn't pop when assign in conditional?
-            if(!arg.equals(STM_WHILE))
+            // pop only when assignment is an expression statement
+            if(arg.equals(STM_EXP))
                 popStack();
 
             return null;
@@ -756,6 +786,111 @@ public class Compiler
         addrs.remove(1);
     }
 
+    public void addLabelAddress() {
+        currentLabel++;
+    }
+
+    public Label makeNewLabel() {
+        return new Label(currentLabel);
+    }
+
+    // TODO
+    public void lazyEvaluation(Exp exp, String arg) {
+        if(exp instanceof EAnd) {
+            genEAndBranch(exp, arg);
+        } else if(exp instanceof EOr) {
+            genEOrBranch(exp, arg);
+        }
+    }
+
+    private void genEAndBranch(Exp exp, String arg) {
+        EAnd eAnd = (EAnd) exp;
+
+        String id1 = eAnd.exp_1.accept(new ExpVisitor(), arg);
+        loadVariable(new Type_int(), id1);
+
+        Label lFalse = makeNewLabel();
+        addLabelAddress();
+        Label lOut = makeNewLabel();
+        addLabelAddress();
+        emit(new IfNe(new Type_bool(), lFalse));// ifeq
+
+        String id2 = eAnd.exp_2.accept(new ExpVisitor(), arg);
+        loadVariable(new Type_int(), id2);
+        emit(new IfNe(new Type_bool(), lFalse));// ifeq
+        emit(new IConst(1));
+        emit(new Goto(lOut));
+
+        emit(lFalse);
+        emit(new IConst(0));
+        emit(new Goto(lOut));
+
+        emit(lOut);
+    }
+
+    private void genEOrBranch(Exp exp, String arg) {
+        EOr eOr = (EOr) exp;
+
+        String id1 = eOr.exp_1.accept(new ExpVisitor(), arg);
+        loadVariable(new Type_int(), id1);
+
+        Label lTrue = makeNewLabel();
+        addLabelAddress();
+        Label lOut = makeNewLabel();
+        addLabelAddress();
+        emit(new IfEq(new Type_bool(), lTrue));// ifne
+
+        String id2 = eOr.exp_2.accept(new ExpVisitor(), arg);
+        loadVariable(new Type_int(), id2);
+        emit(new IfEq(new Type_bool(), lTrue));// ifne
+
+        emit(new IConst(0));
+        emit(new Goto(lOut));
+
+        emit(lTrue);
+        emit(new IConst(1));
+        emit(new Goto(lOut));
+
+        emit(lOut);
+    }
+
+    private void genBooleanBranch(Exp exp) {
+        // TODO
+        Type t = new Type_int();
+        Label lTrue = makeNewLabel();
+        addLabelAddress();
+        Label lFalse = makeNewLabel();
+        addLabelAddress();
+        Label lOut = makeNewLabel();
+        addLabelAddress();
+
+        if(exp instanceof CPP.Absyn.ELt) {
+            emit(new IfLt(t, lTrue));
+        } else if(exp instanceof CPP.Absyn.EGt) {
+            emit(new IfGt(t, lTrue));
+        } else if(exp instanceof CPP.Absyn.ELtEq) {
+            emit(new IfLe(t, lTrue));
+        } else if(exp instanceof CPP.Absyn.EGtEq) {
+            emit(new IfGe(t, lTrue));
+        } else if(exp instanceof CPP.Absyn.EEq) {
+            emit(new IfEq(t, lTrue));
+        } else if(exp instanceof CPP.Absyn.ENEq) {
+            emit(new IfNe(t, lTrue));
+        }
+        emit(new Goto(lFalse));
+
+        emit(lTrue);
+        emit(new IConst(1));
+        emit(new Goto(lOut));
+        emit(lFalse);
+        emit(new IConst(0));
+        emit(new Goto(lOut));
+        emit(lOut);
+    }
+
+
+
+    /**code to be added at the beginning of the jasmin code*/
     private String boilerPlateConst(String className) {
         String boilerPlate = ".class public " + className + NEW_LINE +
                 ".super java/lang/Object" + NEW_LINE + NEW_LINE +
@@ -773,253 +908,4 @@ public class Compiler
         return boilerPlate;
     }
 
-
-
-
-    /**Handles every operation that requires branching*/
-    public class BranchingUtils {
-
-        private int currentLabel = 0;
-
-        public BranchingUtils() {}
-
-        public void addLabelAddress() {
-            currentLabel++;
-        }
-
-        public Label makeNewLabel() {
-            return new Label(currentLabel);
-        }
-
-        private boolean evalBool(String arg) {
-            if(arg != null) {
-                if (loadVariable(new Type_int(), arg) || isBool(arg)) {
-                    // emit boolean evaluation if
-                    // it is a boolean variable or a boolean literal
-                    Label lTrue = new Label(currentLabel);
-                    Label lFalse = new Label(currentLabel + 1);
-                    emit(new IfEq(new Type_bool(), lTrue));
-                    emit(new Goto(lFalse));
-                    return true;
-                }
-            }
-            return false;
-        }
-
-        private boolean isBool(String s) {
-            if(s.equalsIgnoreCase("true") || s.equalsIgnoreCase("false")) {
-                return true;
-            } else { return false; }
-        }
-
-        public boolean isConditionalExp(Exp exp) {
-            if(exp instanceof CPP.Absyn.ELt || exp instanceof CPP.Absyn.EGt ||
-                    exp instanceof CPP.Absyn.ELtEq || exp instanceof CPP.Absyn.EGtEq ||
-                    exp instanceof CPP.Absyn.EEq || exp instanceof CPP.Absyn.ENEq ||
-                    exp instanceof CPP.Absyn.EAnd || exp instanceof CPP.Absyn.EOr) {
-                return true;
-            }
-            return false;
-        }
-
-        public void handleMthBoolReturn() {
-            Label lTrue = new Label(currentLabel);
-            Label lFalse = new Label(currentLabel + 1);
-            emit(new IfEq(new Type_bool(), lTrue));
-            emit(new Goto(lFalse));
-        }
-
-        public void genWhileBranch(SWhile sWhile) {
-            Exp condition = sWhile.exp_;
-            Stm loopStm = sWhile.stm_;
-
-            Label lCondition = makeNewLabel();
-            addLabelAddress();
-
-            emit(lCondition);
-            String arg = condition.accept(new ExpVisitor(), STM_WHILE);
-            evalBool(arg);
-
-            Label lTrue = makeNewLabel();
-            addLabelAddress();
-            Label lFalse = makeNewLabel();
-            addLabelAddress();
-
-            emit(lTrue);
-            loopStm.accept(new StmVisitor(), STM_WHILE);
-            popUnusedLoad();
-            emit(new Goto(lCondition));
-
-            emit(lFalse);
-        }
-
-        public void genIfElseBranch(SIfElse sIfElse) {
-            Exp condition = sIfElse.exp_;
-            Stm stmTrue = sIfElse.stm_1;
-            Stm stmFalse = sIfElse.stm_2;
-
-            String arg = condition.accept(new ExpVisitor(), STM_IFLESE);
-            evalBool(arg);
-
-            Label lTrue = makeNewLabel();
-            addLabelAddress();
-            Label lFalse = makeNewLabel();
-            addLabelAddress();
-            Label lOut = makeNewLabel();
-            addLabelAddress();
-
-            emit(lTrue);
-            stmTrue.accept(new StmVisitor(), STM_IFLESE);
-            popUnusedLoad();
-            emit(new Goto(lOut));
-
-            emit(lFalse);
-            stmFalse.accept(new StmVisitor(), STM_IFLESE);
-            popUnusedLoad();
-            emit(new Goto(lOut));
-
-            emit(lOut);
-        }
-
-        public void genReturnBranch(SReturn sReturn) {
-            Exp condition = sReturn.exp_;
-            String arg = condition.accept(new ExpVisitor(), STM_RETURN);
-            evalBool(arg);
-
-            Label lTrue = makeNewLabel();
-            addLabelAddress();
-            Label lFalse = makeNewLabel();
-            addLabelAddress();
-            Label lOut = makeNewLabel();
-            addLabelAddress();
-            emit(lTrue);
-            emit(new IConst(1));
-            emit(new Return(new Type_bool()));
-            emit(lFalse);
-            emit(new IConst(0));
-            emit(new Return(new Type_bool()));
-            emit(lOut);
-        }
-
-        public void genMthBranch(Fun fun) {
-            Label lTrue = makeNewLabel();
-            addLabelAddress();
-            Label lFalse = makeNewLabel();
-            addLabelAddress();
-            Label lOut = makeNewLabel();
-            addLabelAddress();
-            emit(lTrue);
-            emit(new IConst(1));
-            emit(new Call(className, fun));
-            emit(new Goto(lOut));
-            emit(lFalse);
-            emit(new IConst(0));
-            emit(new Call(className, fun));
-            emit(new Goto(lOut));
-            emit(lOut);
-        }
-
-        public void lazyEvaluation(Exp exp, String arg) {
-            if(exp instanceof EAnd) {
-                genEAndBranch(exp, arg);
-            } else if(exp instanceof EOr) {
-                genEOrBranch(exp, arg);
-            }
-
-            if(arg == null || arg.equals(STM_EXP)) {
-                // the lazy evaluation doesn't belong
-                // to any of the conditional statement,
-                // so simply go to the next statement
-
-                // add label to the next statement here
-                Label lTrue = makeNewLabel();
-                addLabelAddress();
-                Label lFalse = makeNewLabel();
-                addLabelAddress();
-                // whether true or false just go to the next statement
-                emit(lTrue);
-                emit(new Goto(lFalse));
-                emit(lFalse);
-            } else {
-                // no need to add next label. it is already handled by parent statement
-            }
-        }
-
-        private void genEAndBranch(Exp exp, String arg) {
-            EAnd eAnd = (EAnd) exp;
-
-            String id1 = eAnd.exp_1.accept(new ExpVisitor(), arg);
-            evalBool(id1);
-
-            output.removeLast();
-            LinkedList<String> save = output;
-            output = new LinkedList<>();
-
-            Label rhs = makeNewLabel();
-            addLabelAddress();
-            emit(rhs);
-            String id2 = eAnd.exp_2.accept(new ExpVisitor(), arg);
-            evalBool(id2);
-
-            String last = output.getLast();
-            save.add(last);
-            save.addAll(output);
-            output = save;
-        }
-
-        private void genEOrBranch(Exp exp, String arg) {
-            EOr eOr = (EOr) exp;
-
-            String id1 = eOr.exp_1.accept(new ExpVisitor(), arg);
-            evalBool(id1);
-
-            // we need to replace the label address in the future
-            String ifne = output.get(output.size()-2);
-            String orGoto = output.get(output.size()-1);
-            String orGoto2 = orGoto.replace(orGoto.substring(orGoto.indexOf("L")-1),
-                    " L"+currentLabel+NEW_LINE);
-            output.set(output.size()-1, orGoto2);
-            output.remove(output.size()-2);
-
-            LinkedList<String> save = output;
-            output = new LinkedList<>();
-
-            Label rhs = makeNewLabel();
-            addLabelAddress();
-            emit(rhs);
-            String id2 = eOr.exp_2.accept(new ExpVisitor(), arg);
-            evalBool(id2);
-
-            String last2 = output.get(output.size()-2);
-            String label = last2.substring(last2.indexOf("L")-1);
-
-            // replace the label address if exp1 true
-            String replace = ifne.replace(ifne.substring(ifne.indexOf("L")-1), label);
-            save.add(save.size()-1, replace);
-
-            save.addAll(output);
-            output = save;
-        }
-
-        private void genBooleanBranch(Exp exp) {
-            Type t = new Type_int();
-            Label lTrue = new Label(currentLabel);
-            Label lFalse = new Label(currentLabel + 1);
-
-            if(exp instanceof CPP.Absyn.ELt) {
-                emit(new IfLt(t, lTrue));
-            } else if(exp instanceof CPP.Absyn.EGt) {
-                emit(new IfGt(t, lTrue));
-            } else if(exp instanceof CPP.Absyn.ELtEq) {
-                emit(new IfLe(t, lTrue));
-            } else if(exp instanceof CPP.Absyn.EGtEq) {
-                emit(new IfGe(t, lTrue));
-            } else if(exp instanceof CPP.Absyn.EEq) {
-                emit(new IfEq(t, lTrue));
-            } else if(exp instanceof CPP.Absyn.ENEq) {
-                emit(new IfNe(t, lTrue));
-            }
-            emit(new Goto(lFalse));
-        }
-    }
 }
